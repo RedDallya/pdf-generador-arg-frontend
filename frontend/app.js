@@ -1,5 +1,12 @@
 let activeTravelId = null;
 let activeClientId = null;
+/************************************************************
+ * CONFIG API BASE (LOCAL vs PRODUCCIÓN)
+ ************************************************************/
+const API_BASE =
+  location.hostname === "localhost"
+    ? "http://localhost:3000"
+    : "https://mysql-production-04c8.up.railway.app"; // ← TU BACKEND RAILWAY
 
 /************************************************************
  * ESTADO GLOBAL (SE MANTIENE)
@@ -10,6 +17,17 @@ const appState = {
   travels: {},
   activeTravelId: "travel_1"
 };
+
+async function fetchJSON(url, options = {}) {
+  const res = await fetch(url, options);
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "API Error");
+  }
+
+  return res.json();
+}
 
 /************************************************************
  * UTILIDADES GENERALES
@@ -35,9 +53,9 @@ function getActiveTravel() {
 function getActiveCotizacionId() {
   const input = document.querySelector('[data-basic="idpresupuesto"]');
   if (!input || !input.value) {
-    throw new Error("Cotización no definida");
-  }
-  return Number(input.value);
+  alert("Debe ingresar ID de cotización");
+  return null;
+}
 }
 
 function qs(sel) {
@@ -155,17 +173,14 @@ document.addEventListener("click", e => {
   const type = btn.dataset.pdfType || "partial";
   const cotizacionId = getActiveCotizacionId();
 
-const API_BASE =
-  location.hostname === "localhost"
-    ? "http://localhost:3000"
-    : "https://TU_BACKEND.railway.app";
+  const url = `${API_BASE}/api/pdfs/${type}?cotizacion_id=${cotizacionId}`;
 
+  window.open(url, "_blank", "noopener");
 
-  
-  setTimeout(() => {
-    loadPdfs(cotizacionId);
-  }, 800);
+  setTimeout(() => loadPdfs(cotizacionId), 1000);
 });
+
+
 
 
 
@@ -174,7 +189,7 @@ const API_BASE =
  * PDF BUILDER – RENDER
  ************************************************************/
 function loadPdfSections() {
-  fetch(`/api/pdf-sections/${getActiveCotizacionId()}`)
+  fetch(`${API_BASE}/api/pdf-sections/${getActiveCotizacionId()}`)
     .then(r => r.json())
     .then(renderPdfSections);
 }
@@ -195,7 +210,8 @@ function renderPdfSections(sections) {
  * CLIENTES
  ************************************************************/
 async function loadClients() {
-  const res = await fetch("/api/clientes");
+  const res = await fetch(`${API_BASE}/api/clientes`);
+  if (!res.ok) throw new Error("Error cargando clientes");
   const clients = await res.json();
 
   const select = qs("[data-client-select]");
@@ -228,9 +244,12 @@ document.addEventListener("change", async e => {
 
   if (!activeClientId) return;
 
-  const res = await fetch("/api/clientes");
+  const res = await fetch(`${API_BASE}/api/clientes`);
+
+  if (!res.ok) throw new Error("Error clientes");
+
   const clients = await res.json();
-  const client = clients.find(c => c.id === activeClientId);
+
 
   if (client) fillClientForm(client);
   await loadClientDocuments(activeClientId);
@@ -254,7 +273,9 @@ document.addEventListener("click", async e => {
   };
 
   const res = await fetch(
-    activeClientId ? `/api/clientes/${activeClientId}` : "/api/clientes",
+    activeClientId
+      ? `${API_BASE}/api/clientes/${activeClientId}`
+      : `${API_BASE}/api/clientes`,
     {
       method: activeClientId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -276,7 +297,7 @@ document.addEventListener("click", async e => {
   const btn = e.target.closest("[data-doc-save]");
   if (!btn || !activeClientId) return;
 
-  await fetch("/api/client-documents", {
+  await fetch(`${API_BASE}/api/client-documents`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -292,7 +313,9 @@ document.addEventListener("click", async e => {
 });
 
 async function loadClientDocuments(clientId) {
-  const res = await fetch(`/api/client-documents/${clientId}`);
+  const res = await fetch(`${API_BASE}/api/client-documents/${clientId}`);
+
+  if (!res.ok) throw new Error("Error documentos cliente");
   const docs = await res.json();
 
   const list = qs("[data-doc-list]");
@@ -348,7 +371,7 @@ function fillClientForm(c) {
 }
 
 function clearClientForm() {
-  ["id","name","phone","email","location","tags","notes","created"]
+  ["id", "name", "phone", "email", "location", "tags", "notes", "created"]
     .forEach(k => set(k, ""));
 }
 
@@ -459,7 +482,8 @@ function updateTotals() {
 
 
 async function loadPdfs(cotizacionId) {
-  const res = await fetch(`/api/pdfs/${cotizacionId}`);
+  const res = await fetch(`${API_BASE}/api/pdfs/${cotizacionId}`);
+  if (!res.ok) throw new Error("Error PDFs");
   const pdfs = await res.json();
   renderPdfList(pdfs);
 }
@@ -472,7 +496,10 @@ function renderPdfList(pdfs) {
     const node = tpl.content.cloneNode(true);
     const item = node.querySelector(".pdf-item");
 
-    item.dataset.pdfUrl = pdf.url;
+    item.dataset.pdfUrl = pdf.url.startsWith("http")
+      ? pdf.url
+      : API_BASE + pdf.url;
+
     item.dataset.pdfName = pdf.nombre;
 
     node.querySelector("[data-pdf-name]").textContent = pdf.nombre;
@@ -492,7 +519,7 @@ document.addEventListener("click", e => {
 
   if (e.target.closest("[data-pdf-download]")) {
     const a = document.createElement("a");
-    a.href = url;
+    a.href = API_BASE + url;
     a.download = name;
     a.click();
   }
@@ -500,7 +527,8 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-pdf-whatsapp]")) {
     window.open(
       `https://wa.me/?text=${encodeURIComponent(
-        "Te comparto el PDF:\n" + location.origin + url
+        "Te comparto el PDF:\n" + url
+
       )}`,
       "_blank"
     );
@@ -509,7 +537,10 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-pdf-email]")) {
     window.location.href =
       `mailto:?subject=Documentación de viaje&body=${encodeURIComponent(
-        "PDF del viaje:\n" + location.origin + url
+        "PDF del viaje:\n" + API_BASE + url
+
       )}`;
   }
 });
+
+
