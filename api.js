@@ -1,6 +1,6 @@
 // api.js
 
-const API_BASE_URL = "https://TU_BACKEND.up.railway.app/api";
+const API_BASE_URL = "https://pdf-generador-arg-backend-production.up.railway.app";
 // luego lo cambiás por variable de entorno si querés
 
 let authToken = null;
